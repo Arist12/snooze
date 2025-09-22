@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snooze - Reddit AI Agent Discussion Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fas fa-robot me-2"></i>
+                Snooze - AI Agent Discussion Analyzer
+            </span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Analysis Controls -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-search me-2"></i>Analyze Reddit Discussions</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="analyzeForm">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label for="subreddits" class="form-label">Subreddits (comma-separated)</label>
+                                    <input type="text" class="form-control" id="subreddits"
+                                           value="ClaudeCode,codex,GithubCopilot,ChatGPTCoding">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="limit" class="form-label">Post Limit</label>
+                                    <input type="number" class="form-control" id="limit" value="20" min="5" max="100">
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="fas fa-play me-2"></i>Analyze
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="row mb-4" style="display: none;">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Analyzing Reddit discussions... This may take a few minutes.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" style="display: none;">
+            <!-- Discussion Overview -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Discussion Overview</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6 id="discussionTopic"></h6>
+                                    <p id="sentimentOverview" class="text-muted"></p>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="row text-center">
+                                        <div class="col-6">
+                                            <h4 id="postCount" class="text-primary">0</h4>
+                                            <small class="text-muted">Posts Analyzed</small>
+                                        </div>
+                                        <div class="col-6">
+                                            <h4 id="engagementScore" class="text-success">0</h4>
+                                            <small class="text-muted">Total Engagement</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Insights -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Key Insights</h6>
+                        </div>
+                        <div class="card-body">
+                            <ul id="keyInsights" class="list-unstyled"></ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-tags me-2"></i>Common Themes</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="commonThemes"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Individual Post Summaries -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Post Summaries</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="postSummaries"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="row mb-4" style="display: none;">
+            <div class="col-12">
+                <div class="alert alert-danger" role="alert">
+                    <h6 class="alert-heading">Analysis Failed</h6>
+                    <p id="errorMessage" class="mb-0"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
