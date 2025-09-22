@@ -53,7 +53,7 @@ class RedditCrawler:
     ) -> List[str]:
         """Extract top-level comments from a submission."""
         comments = []
-        submission.comments.replace_more(limit=0)
+        submission.comments.replace_more(limit=None)
 
         for comment in submission.comments[:max_comments]:
             if (

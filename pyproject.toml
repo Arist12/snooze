@@ -1,7 +1,7 @@
 [project]
 name = "snooze"
 version = "0.1.0"
-description = "Add your description here"
+description = "Snooze is a Python application that analyzes and visualizes Reddit discussions about AI coding tools."
 readme = "README.md"
 authors = [
     { name = "Arist12", email = "ykzhang@cs.wisc.edu" }
