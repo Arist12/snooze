@@ -81,7 +81,7 @@ AZURE_DEPLOYMENT=your_deployment_name
 
 Start the web server:
 ```bash
-uv run snooze web
+snooze web
 ```
 
 Open http://localhost:8080 in your browser and use the interface to analyze discussions.
@@ -89,23 +89,21 @@ Open http://localhost:8080 in your browser and use the interface to analyze disc
 The web interface provides control over analysis scope:
 - **Posts to Crawl** (10-200): Total posts to fetch from Reddit
 
-This gives you control over analysis scope and cost.
-
 ### Command Line
 
 **Analyze discussions:**
 ```bash
-uv run snooze analyze --subreddits artificial MachineLearning ChatGPT --limit 20
+snooze analyze --subreddits artificial MachineLearning ChatGPT --limit 20
 ```
 
 **Crawl posts without analysis:**
 ```bash
-uv run snooze crawl --subreddits artificial --limit 50 --search "AI agent"
+snooze crawl --subreddits artificial --limit 50 --search "AI agent"
 ```
 
 **Get help:**
 ```bash
-uv run snooze --help
+snooze --help
 ```
 
 ## Project Structure
