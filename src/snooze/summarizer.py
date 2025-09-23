@@ -227,7 +227,23 @@ Focus on:
                     print(
                         f"Skipping irrelevant post {post.id}: {result.get('relevance_reason', 'Not relevant')}"
                     )
-                    return None
+                    # Still create a PostSummary for caching, but mark as not relevant
+                    return PostSummary(
+                        original_post_id=post.id,
+                        title=post.title,
+                        key_points=[],
+                        sentiment="neutral",
+                        topics=[],
+                        summary="",
+                        engagement_score=0,
+                        url=post.permalink,
+                        subreddit=post.subreddit,
+                        score=post.score,
+                        num_comments=post.num_comments,
+                        is_relevant=False,
+                        relevance_reason=result.get("relevance_reason", "Not relevant"),
+                        created_utc=post.created_utc,
+                    )
 
                 # Limit topics to top 3
                 topics = result.get("topics", [])[:3]
@@ -297,7 +313,23 @@ Focus on:
                 print(
                     f"Skipping irrelevant post {post.id}: {result.get('relevance_reason', 'Not relevant')}"
                 )
-                return None
+                # Still create a PostSummary for caching, but mark as not relevant
+                return PostSummary(
+                    original_post_id=post.id,
+                    title=post.title,
+                    key_points=[],
+                    sentiment="neutral",
+                    topics=[],
+                    summary="",
+                    engagement_score=0,
+                    url=post.permalink,
+                    subreddit=post.subreddit,
+                    score=post.score,
+                    num_comments=post.num_comments,
+                    is_relevant=False,
+                    relevance_reason=result.get("relevance_reason", "Not relevant"),
+                    created_utc=post.created_utc,
+                )
 
             # Limit topics to top 3
             topics = result.get("topics", [])[:3]
@@ -345,17 +377,22 @@ Focus on:
 
             if summary:
                 summaries.append(summary)
-                relevant_count += 1
-                print(
-                    f"✅ Relevant post {relevant_count} ({total_processed}/{len(posts)}): {post.title[:50]}"
-                )
-                if callback:
-                    await callback(
-                        summary
-                    )  # Real-time callback for immediate rendering
+                if summary.is_relevant:
+                    relevant_count += 1
+                    print(
+                        f"✅ Relevant post {relevant_count} ({total_processed}/{len(posts)}): {post.title[:50]}"
+                    )
+                    if callback:
+                        await callback(
+                            summary
+                        )  # Real-time callback for immediate rendering
+                else:
+                    print(
+                        f"❌ Filtered out post {total_processed}/{len(posts)}: {post.title[:50]} (not relevant)"
+                    )
             else:
                 print(
-                    f"❌ Filtered out post {total_processed}/{len(posts)}: {post.title[:50]} (not relevant)"
+                    f"❌ Error processing post {total_processed}/{len(posts)}: {post.title[:50]} (processing failed)"
                 )
 
             return summary
@@ -382,10 +419,13 @@ Focus on:
             summary = self.summarize_post(post)
             if summary:
                 summaries.append(summary)
-                relevant_count += 1
-                print(f"✅ Relevant post {relevant_count}: {post.title[:50]}")
+                if summary.is_relevant:
+                    relevant_count += 1
+                    print(f"✅ Relevant post {relevant_count}: {post.title[:50]}")
+                else:
+                    print(f"❌ Filtered out post: {post.title[:50]} (not relevant)")
             else:
-                print(f"❌ Filtered out post: {post.title[:50]} (not relevant)")
+                print(f"❌ Error processing post: {post.title[:50]} (processing failed)")
 
         print(
             f"\n📊 Processing complete: {relevant_count}/{len(posts)} posts were relevant and included"
