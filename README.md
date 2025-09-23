@@ -14,7 +14,12 @@ Snooze uses a multi-stage filtering process to identify relevant AI coding discu
 
 3. **Engagement Priority**: Fetches "hot" posts (most popular recent posts) and sorts by score and recency
 
-4. **LLM Relevance Check**: Each post is analyzed by LLM to filter out spam, empty posts, or off-topic content
+4. **Enhanced LLM Relevance Filtering**: Each post is analyzed by LLM with strict criteria to exclude:
+   - ❌ Subreddit rules, guidelines, or meta announcements
+   - ❌ Moderator posts about community features or policies
+   - ❌ Empty posts, memes, or low-effort content
+   - ❌ General AI discussions without coding/development focus
+   - ✅ Only includes substantive discussions about AI coding tools, workflows, and experiences
 
 
 ### Live Progressive Rendering
@@ -80,6 +85,12 @@ uv run snooze web
 ```
 
 Open http://localhost:8080 in your browser and use the interface to analyze discussions.
+
+The web interface provides two key controls:
+- **Posts to Crawl** (10-200): Total posts to fetch from Reddit
+- **Target Relevant Posts** (5-50): Stop when this many relevant posts found
+
+This gives you precise control over analysis scope and cost.
 
 ### Command Line
 

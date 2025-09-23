@@ -85,7 +85,7 @@ class LLMSummarizer:
         )
 
         return f"""
-Analyze this Reddit post about AI agents and provide a structured summary.
+Analyze this Reddit post and determine if it's a substantive discussion about AI coding agents/tools.
 
 POST DETAILS:
 Title: {post.title}
@@ -110,18 +110,26 @@ Please provide a JSON response with the following structure:
     "engagement_score": 1-10
 }}
 
-IMPORTANT:
-- Set "is_relevant" to false if the post is empty, meaningless, spam, or not related to AI/coding tools
-- Only include the TOP 3 most relevant topics (not more)
-- Only include meaningful, substantive key points
+STRICT RELEVANCE CRITERIA - Set "is_relevant" to FALSE if the post is:
+❌ Subreddit rules, guidelines, or meta announcements
+❌ Moderator posts about community features or policies
+❌ Off-topic discussions not about AI coding tools
+❌ Empty posts, memes, or low-effort content
+❌ General AI discussions without coding/development focus
+❌ Posts about non-coding AI applications (art, writing, etc.)
+❌ Technical support for non-AI tools
+❌ Job postings or recruitment
 
-Focus on:
-1. Key insights about AI agents, their capabilities, limitations, or use cases
-2. User experiences and opinions
-3. Technical discussions or concerns
-4. Overall sentiment of the discussion
-5. How engaging/valuable this discussion appears to be
-6. Relevance to AI coding tools, programming assistants, or developer tools
+✅ Set "is_relevant" to TRUE only if the post contains:
+✅ Discussions about AI coding assistants (Claude Code, Copilot, Cursor, etc.)
+✅ User experiences with AI development tools
+✅ Technical comparisons of AI coding platforms
+✅ Workflows, tips, or best practices for AI-assisted coding
+✅ Problems, limitations, or improvements for coding AI
+✅ Code generation, debugging, or refactoring with AI
+✅ AI agent behavior in software development contexts
+
+Focus on CODING and DEVELOPMENT discussions only. Exclude all meta/administrative content.
 """
 
     def _create_discussion_summary_prompt(

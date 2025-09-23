@@ -47,10 +47,12 @@ class SnoozeApp {
         event.preventDefault();
 
         const subredditsInput = document.getElementById('subreddits').value;
-        const limitInput = document.getElementById('limit').value;
+        const crawlLimitInput = document.getElementById('crawlLimit').value;
+        const targetCountInput = document.getElementById('targetCount').value;
 
         const subreddits = subredditsInput.split(',').map(s => s.trim()).filter(s => s);
-        const limit = parseInt(limitInput) || 20;
+        const crawlLimit = parseInt(crawlLimitInput) || 50;
+        const targetCount = parseInt(targetCountInput) || 20;
 
         this.realTimePostsReceived = 0;
         this.totalPostsExpected = 0;
@@ -75,7 +77,8 @@ class SnoozeApp {
                     },
                     body: JSON.stringify({
                         subreddits: subreddits,
-                        limit: limit
+                        crawl_limit: crawlLimit,
+                        target_count: targetCount
                     })
                 });
 
@@ -94,7 +97,8 @@ class SnoozeApp {
                     },
                     body: JSON.stringify({
                         subreddits: subreddits,
-                        limit: limit
+                        crawl_limit: crawlLimit,
+                        target_count: targetCount
                     })
                 });
 
