@@ -23,9 +23,16 @@ class DataStorage:
         self.posts_dir = self.data_dir / "posts"
         self.summaries_dir = self.data_dir / "summaries"
         self.discussions_dir = self.data_dir / "discussions"
-        self.post_summaries_dir = self.data_dir / "post_summaries"  # Individual post summaries
+        self.post_summaries_dir = (
+            self.data_dir / "post_summaries"
+        )  # Individual post summaries
 
-        for directory in [self.posts_dir, self.summaries_dir, self.discussions_dir, self.post_summaries_dir]:
+        for directory in [
+            self.posts_dir,
+            self.summaries_dir,
+            self.discussions_dir,
+            self.post_summaries_dir,
+        ]:
             directory.mkdir(exist_ok=True)
 
     def _generate_cache_key(self, data: str) -> str:
@@ -274,7 +281,12 @@ class DataStorage:
 
         directories = []
         if category is None:
-            directories = [self.posts_dir, self.summaries_dir, self.discussions_dir, self.post_summaries_dir]
+            directories = [
+                self.posts_dir,
+                self.summaries_dir,
+                self.discussions_dir,
+                self.post_summaries_dir,
+            ]
         elif category == "posts":
             directories = [self.posts_dir]
         elif category == "summaries":
@@ -320,13 +332,17 @@ class DataStorage:
             "num_comments": post_summary.num_comments,
             "is_relevant": post_summary.is_relevant,
             "relevance_reason": post_summary.relevance_reason,
-            "created_utc": post_summary.created_utc.isoformat() if post_summary.created_utc else None,
+            "created_utc": post_summary.created_utc.isoformat()
+            if post_summary.created_utc
+            else None,
         }
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False)
 
-    def load_post_summary(self, post_id: str, max_age_hours: int = 144) -> Optional[PostSummary]:
+    def load_post_summary(
+        self, post_id: str, max_age_hours: int = 144
+    ) -> Optional[PostSummary]:
         """Load individual post summary if cache is valid."""
         filepath = self.post_summaries_dir / f"{post_id}.json"
 
@@ -362,7 +378,9 @@ class DataStorage:
             print(f"Error loading cached post summary for {post_id}: {e}")
             return None
 
-    def load_summaries_with_post_cache(self, posts: List[RedditPost], max_age_hours: int = 144) -> List[PostSummary]:
+    def load_summaries_with_post_cache(
+        self, posts: List[RedditPost], max_age_hours: int = 144
+    ) -> List[PostSummary]:
         """Load summaries using post-level caching. Returns cached summaries and list of posts that need analysis."""
         cached_summaries = []
 
@@ -373,7 +391,9 @@ class DataStorage:
 
         return cached_summaries
 
-    def get_posts_needing_analysis(self, posts: List[RedditPost], max_age_hours: int = 144) -> List[RedditPost]:
+    def get_posts_needing_analysis(
+        self, posts: List[RedditPost], max_age_hours: int = 144
+    ) -> List[RedditPost]:
         """Get list of posts that don't have valid cached summaries."""
         posts_needing_analysis = []
 

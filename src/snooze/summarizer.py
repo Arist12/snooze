@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from openai import AsyncAzureOpenAI, AzureOpenAI
+from openai import AsyncAzureOpenAI
 
 from .crawler import RedditPost
 
@@ -51,22 +51,13 @@ class LLMSummarizer:
         endpoint: str,
         deployment: str,
         api_version: str = "2024-12-01-preview",
-        use_async: bool = True,
     ):
         """Initialize the LLM summarizer with Azure OpenAI credentials."""
-        self.use_async = use_async
-        if use_async:
-            self.async_client = AsyncAzureOpenAI(
-                api_key=api_key,
-                azure_endpoint=endpoint,
-                api_version=api_version,
-            )
-        else:
-            self.client = AzureOpenAI(
-                api_key=api_key,
-                azure_endpoint=endpoint,
-                api_version=api_version,
-            )
+        self.async_client = AsyncAzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=endpoint,
+            api_version=api_version,
+        )
         self.deployment = deployment
 
     @classmethod
@@ -269,100 +260,10 @@ Focus on:
                 print(f"Error summarizing post {post.id}: {e}")
                 return None
 
-    def summarize_post(self, post: RedditPost) -> Optional[PostSummary]:
-        """Summarize a single Reddit post using LLM."""
-        if self.use_async:
-            # Use asyncio.run() for proper event loop management
-            return asyncio.run(self._run_single_post_async(post))
-
-        try:
-            prompt = self._create_post_summary_prompt(post)
-
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an AI expert analyzing Reddit discussions about AI agents. Always respond with valid JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_completion_tokens=16384,
-            )
-
-            content = response.choices[0].message.content
-
-            # Parse the JSON response
-            import json
-
-            try:
-                result = json.loads(content)
-            except json.JSONDecodeError:
-                # Try to extract JSON from the response if it's wrapped in other text
-                import re
-
-                json_match = re.search(r"\{.*\}", content, re.DOTALL)
-                if json_match:
-                    result = json.loads(json_match.group())
-                else:
-                    return None
-
-            # Check relevance first
-            is_relevant = result.get("is_relevant", True)
-            if not is_relevant:
-                print(
-                    f"Skipping irrelevant post {post.id}: {result.get('relevance_reason', 'Not relevant')}"
-                )
-                # Still create a PostSummary for caching, but mark as not relevant
-                return PostSummary(
-                    original_post_id=post.id,
-                    title=post.title,
-                    key_points=[],
-                    sentiment="neutral",
-                    topics=[],
-                    summary="",
-                    engagement_score=0,
-                    url=post.permalink,
-                    subreddit=post.subreddit,
-                    score=post.score,
-                    num_comments=post.num_comments,
-                    is_relevant=False,
-                    relevance_reason=result.get("relevance_reason", "Not relevant"),
-                    created_utc=post.created_utc,
-                )
-
-            # Limit topics to top 3
-            topics = result.get("topics", [])[:3]
-
-            return PostSummary(
-                original_post_id=post.id,
-                title=post.title,
-                key_points=result.get("key_points", []),
-                sentiment=result.get("sentiment", "neutral"),
-                topics=topics,
-                summary=result.get("summary", ""),
-                engagement_score=result.get("engagement_score", post.score // 10),
-                url=post.permalink,
-                subreddit=post.subreddit,
-                score=post.score,
-                num_comments=post.num_comments,
-                is_relevant=is_relevant,
-                relevance_reason=result.get("relevance_reason", ""),
-                created_utc=post.created_utc,
-            )
-
-        except Exception as e:
-            print(f"Error summarizing post {post.id}: {e}")
-            return None
-
     async def summarize_posts_async(
         self, posts: List[RedditPost], max_concurrent: int = 5, callback=None
     ) -> List[PostSummary]:
         """Asynchronously summarize multiple Reddit posts with rate limiting."""
-        if not self.use_async:
-            raise ValueError(
-                "Async client not initialized. Set use_async=True in constructor."
-            )
 
         summaries = []
         semaphore = asyncio.Semaphore(max_concurrent)
@@ -403,32 +304,6 @@ Focus on:
 
         print(
             f"\n📊 Processing complete: {relevant_count}/{total_processed} posts were relevant and included"
-        )
-        return summaries
-
-    def summarize_posts(self, posts: List[RedditPost]) -> List[PostSummary]:
-        """Summarize multiple Reddit posts."""
-        if self.use_async:
-            # Use asyncio.run() for proper event loop management
-            return asyncio.run(self._run_posts_async(posts))
-
-        summaries = []
-        relevant_count = 0
-        for i, post in enumerate(posts):
-            print(f"Processing post {i + 1}/{len(posts)}: {post.title[:50]}...")
-            summary = self.summarize_post(post)
-            if summary:
-                summaries.append(summary)
-                if summary.is_relevant:
-                    relevant_count += 1
-                    print(f"✅ Relevant post {relevant_count}: {post.title[:50]}")
-                else:
-                    print(f"❌ Filtered out post: {post.title[:50]} (not relevant)")
-            else:
-                print(f"❌ Error processing post: {post.title[:50]} (processing failed)")
-
-        print(
-            f"\n📊 Processing complete: {relevant_count}/{len(posts)} posts were relevant and included"
         )
         return summaries
 
@@ -487,94 +362,6 @@ Focus on:
         except Exception as e:
             print(f"Error creating discussion summary: {e}")
             return None
-
-    def create_discussion_summary(
-        self, post_summaries: List[PostSummary]
-    ) -> Optional[DiscussionSummary]:
-        """Create an overall summary of multiple post summaries."""
-        if not post_summaries:
-            return None
-
-        if self.use_async:
-            # Use asyncio.run() for proper event loop management
-            return asyncio.run(self._run_discussion_async(post_summaries))
-
-        try:
-            prompt = self._create_discussion_summary_prompt(post_summaries)
-
-            response = self.client.chat.completions.create(
-                model=self.deployment,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an AI expert analyzing Reddit discussions about AI agents. Always respond with valid JSON.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_completion_tokens=16384,
-            )
-
-            content = response.choices[0].message.content
-
-            # Parse the JSON response
-            import json
-
-            try:
-                result = json.loads(content)
-            except json.JSONDecodeError:
-                import re
-
-                json_match = re.search(r"\{.*\}", content, re.DOTALL)
-                if json_match:
-                    result = json.loads(json_match.group())
-                else:
-                    return None
-
-            total_engagement = sum(
-                summary.engagement_score for summary in post_summaries
-            )
-
-            return DiscussionSummary(
-                topic=result.get("topic", "AI Agent Discussions"),
-                key_insights=result.get("key_insights", []),
-                common_themes=result.get("common_themes", []),
-                sentiment_overview=result.get("sentiment_overview", ""),
-                post_summaries=post_summaries,
-                total_engagement=total_engagement,
-                total_posts_analyzed=len(post_summaries),
-            )
-
-        except Exception as e:
-            print(f"Error creating discussion summary: {e}")
-            return None
-
-    async def _run_single_post_async(self, post: RedditPost) -> Optional[PostSummary]:
-        """Helper method to run single post analysis with fresh client if needed."""
-        self._ensure_async_client()
-        semaphore = asyncio.Semaphore(5)
-        return await self._summarize_post_async(post, semaphore)
-
-    async def _run_posts_async(self, posts: List[RedditPost]) -> List[PostSummary]:
-        """Helper method to run multiple posts analysis with fresh client if needed."""
-        self._ensure_async_client()
-        return await self.summarize_posts_async(posts)
-
-    async def _run_discussion_async(self, post_summaries: List[PostSummary]) -> Optional[DiscussionSummary]:
-        """Helper method to run discussion summary with fresh client if needed."""
-        self._ensure_async_client()
-        return await self._create_discussion_summary_async(post_summaries)
-
-    def _ensure_async_client(self):
-        """Ensure async client is available and valid."""
-        if not hasattr(self, 'async_client') or self.async_client is None:
-            import os
-            from openai import AsyncAzureOpenAI
-
-            self.async_client = AsyncAzureOpenAI(
-                api_key=os.getenv("AZURE_API_KEY"),
-                azure_endpoint=os.getenv("AZURE_ENDPOINT"),
-                api_version="2024-12-01-preview",
-            )
 
     def analyze_trends(self, discussion_summaries: List[DiscussionSummary]) -> dict:
         """Analyze trends across multiple discussion summaries."""
