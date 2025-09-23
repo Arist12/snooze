@@ -64,8 +64,7 @@ class SnoozeVisualizer:
             """API endpoint to analyze Reddit discussions (legacy, synchronous)."""
             try:
                 data = request.get_json()
-                crawl_limit = data.get("crawl_limit", data.get("limit", 50))  # Backward compatibility
-                target_count = data.get("target_count", 20)
+                limit = data.get("limit", 50)
                 subreddits = data.get(
                     "subreddits",
                     ["vibecoding", "ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding", "cursor"],
@@ -79,15 +78,15 @@ class SnoozeVisualizer:
 
                 # Generate cache keys
                 posts_cache_key = self.storage.generate_posts_cache_key(
-                    subreddits, crawl_limit
+                    subreddits, limit
                 )
 
                 # Try to load cached posts first
                 posts = self.storage.load_posts(posts_cache_key, max_age_hours=6)
                 if not posts:
-                    print(f"Crawling {crawl_limit} new posts from Reddit...")
+                    print(f"Crawling {limit} new posts from Reddit...")
                     # Crawl posts
-                    posts = self.crawler.get_all_coding_discussions(limit=crawl_limit)
+                    posts = self.crawler.get_all_coding_discussions(limit=limit)
                     if posts:
                         self.storage.save_posts(posts, posts_cache_key)
                 else:
@@ -98,9 +97,25 @@ class SnoozeVisualizer:
                         {"success": False, "error": "No posts found to analyze"}
                     ), 404
 
-                # Use smart analysis to reach target count
-                summaries = self._smart_analysis_to_target(posts, target_count)
-                print(f"Reached target: {len(summaries)} relevant posts from {len(posts)} crawled posts")
+                # Use post-level caching for efficient summary retrieval
+                cached_summaries = self.storage.load_summaries_with_post_cache(posts, max_age_hours=144)
+                posts_needing_analysis = self.storage.get_posts_needing_analysis(posts, max_age_hours=144)
+
+                print(f"Found {len(cached_summaries)} cached summaries, {len(posts_needing_analysis)} posts need analysis")
+
+                # Analyze posts that don't have cached summaries
+                if posts_needing_analysis:
+                    new_summaries = self.summarizer.summarize_posts(posts_needing_analysis)
+                    # Save each new summary
+                    for summary in new_summaries:
+                        if summary:
+                            self.storage.save_post_summary(summary)
+                else:
+                    new_summaries = []
+
+                # Combine cached and new summaries
+                summaries = cached_summaries + new_summaries
+                print(f"Analysis complete: {len(summaries)} relevant posts found")
 
                 # Save combined summaries for backward compatibility
                 if summaries:
@@ -138,8 +153,7 @@ class SnoozeVisualizer:
                         else None,
                         "post_count": len(posts),
                         "summary_count": len(summaries),
-                        "crawl_limit": crawl_limit,
-                        "target_count": target_count,
+                        "limit": limit,
                         "cached": {
                             "posts": posts_cache_key
                             in [f for f in self.storage.list_cached_files()["posts"]],
@@ -164,8 +178,7 @@ class SnoozeVisualizer:
             """API endpoint to start async analysis with real-time updates."""
             try:
                 data = request.get_json()
-                crawl_limit = data.get("crawl_limit", data.get("limit", 50))  # Backward compatibility
-                target_count = data.get("target_count", 20)
+                limit = data.get("limit", 50)
                 subreddits = data.get(
                     "subreddits",
                     ["vibecoding", "ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding", "cursor"],
@@ -173,7 +186,7 @@ class SnoozeVisualizer:
 
                 # Start async analysis in background
                 self.socketio.start_background_task(
-                    self._run_async_analysis, subreddits, crawl_limit, target_count
+                    self._run_async_analysis, subreddits, limit
                 )
 
                 return jsonify({"success": True, "message": "Analysis started"})
@@ -229,53 +242,16 @@ class SnoozeVisualizer:
                 }
             )
 
-    def _smart_analysis_to_target(self, posts, target_count):
-        """Analyze posts until target count of relevant posts is reached."""
-        cached_summaries = self.storage.load_summaries_with_post_cache(posts, max_age_hours=144)
-        posts_needing_analysis = self.storage.get_posts_needing_analysis(posts, max_age_hours=144)
 
-        print(f"Found {len(cached_summaries)} cached summaries, {len(posts_needing_analysis)} posts need analysis")
-
-        # If we already have enough relevant posts from cache
-        if len(cached_summaries) >= target_count:
-            print(f"Target reached with cached summaries: {len(cached_summaries[:target_count])} posts")
-            return cached_summaries[:target_count]
-
-        # Need to analyze more posts
-        all_summaries = cached_summaries.copy()
-        remaining_needed = target_count - len(cached_summaries)
-
-        print(f"Need {remaining_needed} more relevant posts, analyzing {len(posts_needing_analysis)} posts...")
-
-        # Analyze posts one by one until we have enough
-        analyzed_count = 0
-        for post in posts_needing_analysis:
-            if len(all_summaries) >= target_count:
-                break
-
-            analyzed_count += 1
-            print(f"Analyzing post {analyzed_count}/{len(posts_needing_analysis)}: {post.title[:50]}...")
-
-            summary = self.summarizer.summarize_post(post)
-            if summary:  # Only include relevant posts
-                self.storage.save_post_summary(summary)
-                all_summaries.append(summary)
-                print(f"✅ Relevant post found ({len(all_summaries)}/{target_count}): {post.title[:50]}")
-            else:
-                print(f"❌ Post filtered out: {post.title[:50]}")
-
-        print(f"Analysis complete: {len(all_summaries)} relevant posts found")
-        return all_summaries[:target_count]
-
-    def _run_async_analysis(self, subreddits, crawl_limit, target_count):
+    def _run_async_analysis(self, subreddits, limit):
         """Run async analysis with real-time updates via WebSocket."""
         try:
             # Use asyncio.run() for proper event loop management
-            asyncio.run(self._async_analysis_process(subreddits, crawl_limit, target_count))
+            asyncio.run(self._async_analysis_process(subreddits, limit))
         except Exception as e:
             self.socketio.emit('error', {'message': str(e)})
 
-    async def _async_analysis_process(self, subreddits, crawl_limit, target_count):
+    async def _async_analysis_process(self, subreddits, limit):
         """The actual async analysis process."""
         try:
             # Initialize components if not already done
@@ -287,15 +263,15 @@ class SnoozeVisualizer:
             self.socketio.emit('progress', {'stage': 'crawling', 'message': 'Crawling Reddit posts...'})
 
             # Generate cache keys
-            posts_cache_key = self.storage.generate_posts_cache_key(subreddits, crawl_limit)
+            posts_cache_key = self.storage.generate_posts_cache_key(subreddits, limit)
 
             # Try to load cached posts first
             posts = self.storage.load_posts(posts_cache_key, max_age_hours=6)
             if not posts:
                 if self.crawler.use_async:
-                    posts = await self.crawler.get_all_coding_discussions_async(limit=crawl_limit)
+                    posts = await self.crawler.get_all_coding_discussions_async(limit=limit)
                 else:
-                    posts = self.crawler.get_all_coding_discussions(limit=crawl_limit)
+                    posts = self.crawler.get_all_coding_discussions(limit=limit)
                 if posts:
                     self.storage.save_posts(posts, posts_cache_key)
 

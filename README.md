@@ -86,11 +86,10 @@ uv run snooze web
 
 Open http://localhost:8080 in your browser and use the interface to analyze discussions.
 
-The web interface provides two key controls:
+The web interface provides control over analysis scope:
 - **Posts to Crawl** (10-200): Total posts to fetch from Reddit
-- **Target Relevant Posts** (5-50): Stop when this many relevant posts found
 
-This gives you precise control over analysis scope and cost.
+This gives you control over analysis scope and cost.
 
 ### Command Line
 

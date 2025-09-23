@@ -28,25 +28,18 @@
                     </div>
                     <div class="card-body">
                         <form id="analyzeForm">
-                            <div class="row mb-3">
-                                <div class="col-md-12">
+                            <div class="row">
+                                <div class="col-md-6">
                                     <label for="subreddits" class="form-label">Subreddits (comma-separated)</label>
                                     <input type="text" class="form-control" id="subreddits"
                                            value="vibecoding,ClaudeCode,codex,GithubCopilot,ChatGPTCoding,cursor">
                                 </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <label for="crawlLimit" class="form-label">Posts to Crawl</label>
-                                    <input type="number" class="form-control" id="crawlLimit" value="50" min="10" max="200">
+                                <div class="col-md-3">
+                                    <label for="limit" class="form-label">Posts to Crawl</label>
+                                    <input type="number" class="form-control" id="limit" value="50" min="10" max="200">
                                     <small class="form-text text-muted">Total posts to fetch from Reddit</small>
                                 </div>
-                                <div class="col-md-4">
-                                    <label for="targetCount" class="form-label">Target Relevant Posts</label>
-                                    <input type="number" class="form-control" id="targetCount" value="20" min="5" max="50">
-                                    <small class="form-text text-muted">Stop when this many relevant posts found</small>
-                                </div>
-                                <div class="col-md-4 d-flex align-items-end">
+                                <div class="col-md-3 d-flex align-items-end">
                                     <button type="submit" class="btn btn-primary w-100" id="analyzeBtn">
                                         <i class="fas fa-play me-2"></i>Analyze
                                     </button>
