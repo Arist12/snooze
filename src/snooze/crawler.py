@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterator, List, Optional
 
-import praw
 import asyncpraw
+import praw
 from praw.models import Comment, Submission
 
 
@@ -65,16 +65,33 @@ class RedditCrawler:
         """Extract top-level comments from an async submission."""
         comments = []
         try:
+            # Check if submission has comments attribute and it's not None
+            if not hasattr(submission, "comments") or submission.comments is None:
+                return comments
+
             await submission.comments.replace_more(limit=None)
-            async for comment in submission.comments[:max_comments]:
+
+            # Process comments with proper iteration and counting
+            comment_count = 0
+            async for comment in submission.comments:
+                if comment_count >= max_comments:
+                    break
+
                 if (
-                    hasattr(comment, 'body')
+                    hasattr(comment, "body")
                     and comment.body
                     and comment.body != "[deleted]"
+                    and comment.body is not None
                 ):
                     comments.append(comment.body)
-        except Exception as e:
-            print(f"Error extracting comments: {e}")
+                    comment_count += 1
+
+        except (AttributeError, TypeError):
+            # print(f"Error extracting comments (submission issue): {e}")
+            pass
+        except Exception:
+            # print(f"Error extracting comments: {e}")
+            pass
         return comments
 
     def _extract_comments(
@@ -82,15 +99,32 @@ class RedditCrawler:
     ) -> List[str]:
         """Extract top-level comments from a submission."""
         comments = []
-        submission.comments.replace_more(limit=None)
+        try:
+            # Check if submission has comments and it's accessible
+            if not hasattr(submission, "comments") or submission.comments is None:
+                return comments
 
-        for comment in submission.comments[:max_comments]:
-            if (
-                isinstance(comment, Comment)
-                and comment.body
-                and comment.body != "[deleted]"
-            ):
-                comments.append(comment.body)
+            submission.comments.replace_more(limit=None)
+
+            comment_count = 0
+            for comment in submission.comments:
+                if comment_count >= max_comments:
+                    break
+
+                if (
+                    isinstance(comment, Comment)
+                    and hasattr(comment, "body")
+                    and comment.body
+                    and comment.body != "[deleted]"
+                    and comment.body is not None
+                ):
+                    comments.append(comment.body)
+                    comment_count += 1
+
+        except (AttributeError, TypeError) as e:
+            print(f"Error extracting comments (submission issue): {e}")
+        except Exception as e:
+            print(f"Error extracting comments: {e}")
 
         return comments
 
@@ -98,7 +132,9 @@ class RedditCrawler:
         self, submission, include_comments: bool = True
     ) -> RedditPost:
         """Convert an AsyncPRAW submission to a RedditPost."""
-        comments = await self._extract_comments_async(submission) if include_comments else []
+        comments = (
+            await self._extract_comments_async(submission) if include_comments else []
+        )
 
         return RedditPost(
             id=submission.id,
@@ -222,17 +258,34 @@ class RedditCrawler:
     ) -> List[RedditPost]:
         """Get coding-related posts from specified subreddits asynchronously."""
         if not self.use_async:
-            raise ValueError("Async Reddit client not initialized. Set use_async=True in constructor.")
+            raise ValueError(
+                "Async Reddit client not initialized. Set use_async=True in constructor."
+            )
 
         if subreddit_names is None:
             subreddit_names = ["ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding"]
 
         if coding_keywords is None:
             coding_keywords = [
-                "copilot", "claude", "chatgpt", "cursor", "coding", "code", "programming",
-                "debug", "script", "ai assistant", "coding assistant", "github copilot",
-                "claude code", "chatgpt coding", "cursor ai", "autocomplete", "intellisense",
-                "pair programming", "code generation",
+                "copilot",
+                "claude",
+                "chatgpt",
+                "cursor",
+                "coding",
+                "code",
+                "programming",
+                "debug",
+                "script",
+                "ai assistant",
+                "coding assistant",
+                "github copilot",
+                "claude code",
+                "chatgpt coding",
+                "cursor ai",
+                "autocomplete",
+                "intellisense",
+                "pair programming",
+                "code generation",
             ]
 
         all_posts = []
@@ -242,7 +295,9 @@ class RedditCrawler:
                 subreddit = await self.async_reddit.subreddit(subreddit_name)
                 post_count = 0
 
-                async for submission in subreddit.hot(limit=limit_per_subreddit * 2):  # Get more to filter
+                async for submission in subreddit.hot(
+                    limit=limit_per_subreddit * 2
+                ):  # Get more to filter
                     if post_count >= limit_per_subreddit:
                         break
 
@@ -252,11 +307,18 @@ class RedditCrawler:
 
                     # For coding subreddits, be more inclusive but still filter out completely unrelated posts
                     is_coding_related = subreddit_name.lower() in [
-                        "claudecode", "codex", "githubcopilot", "chatgptcoding",
-                    ] or any(keyword.lower() in text_to_check for keyword in coding_keywords)
+                        "claudecode",
+                        "codex",
+                        "githubcopilot",
+                        "chatgptcoding",
+                    ] or any(
+                        keyword.lower() in text_to_check for keyword in coding_keywords
+                    )
 
                     if is_coding_related:
-                        post = await self._submission_to_post_async(submission, include_comments)
+                        post = await self._submission_to_post_async(
+                            submission, include_comments
+                        )
                         all_posts.append(post)
                         post_count += 1
 

@@ -177,6 +177,18 @@ class SnoozeApp {
             <p class="text-muted mb-2">${summary.summary}</p>
 
             <div class="mb-2">
+                <strong class="text-dark">Topics:</strong>
+                <div class="mt-1">
+                    ${summary.topics.map(topic =>
+                        `<div class="key-point d-flex align-items-start mb-1">
+                            <i class="fas fa-chevron-right text-success me-2 mt-1" style="font-size: 0.7em;"></i>
+                            <span class="small">${topic}</span>
+                        </div>`
+                    ).join('')}
+                </div>
+            </div>
+
+            <div class="mb-2">
                 <strong class="text-dark">Key Points:</strong>
                 <div class="mt-1">
                     ${summary.key_points.map(point =>
@@ -188,19 +200,11 @@ class SnoozeApp {
                 </div>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="d-flex gap-3 small text-muted">
-                    <span><i class="fas fa-calendar me-1"></i>${this.formatPostDate(summary.created_utc)}</span>
-                    <span><i class="fas fa-arrow-up me-1"></i>${summary.score || 0} upvotes</span>
-                    <span><i class="fas fa-comments me-1"></i>${summary.num_comments || 0} comments</span>
-                    <span><i class="fas fa-star me-1"></i>${summary.engagement_score}/10</span>
-                </div>
-                <div>
-                    <strong class="text-dark me-2">Topics:</strong>
-                    ${summary.topics.map(topic =>
-                        `<span class="theme-tag badge bg-light text-dark me-1">${topic}</span>`
-                    ).join('')}
-                </div>
+            <div class="d-flex gap-3 small text-muted">
+                <span><i class="fas fa-calendar me-1"></i>${this.formatPostDate(summary.created_utc)}</span>
+                <span><i class="fas fa-arrow-up me-1"></i>${summary.score || 0} upvotes</span>
+                <span><i class="fas fa-comments me-1"></i>${summary.num_comments || 0} comments</span>
+                <span><i class="fas fa-star me-1"></i>${summary.engagement_score}/10</span>
             </div>
         `;
         return div;
@@ -321,19 +325,23 @@ class SnoozeApp {
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="d-flex gap-3 small text-muted">
-                        <span><i class="fas fa-calendar me-1"></i>${this.formatPostDate(summary.created_utc)}</span>
-                        <span><i class="fas fa-arrow-up me-1"></i>${summary.score || 0} upvotes</span>
-                        <span><i class="fas fa-comments me-1"></i>${summary.num_comments || 0} comments</span>
-                        <span><i class="fas fa-star me-1"></i>${summary.engagement_score}/10</span>
-                    </div>
-                    <div>
-                        <strong class="text-dark me-2">Topics:</strong>
+                <div class="mb-2">
+                    <strong class="text-dark">Topics:</strong>
+                    <div class="mt-1">
                         ${summary.topics.map(topic =>
-                            `<span class="theme-tag badge bg-light text-dark me-1">${topic}</span>`
+                            `<div class="key-point d-flex align-items-start mb-1">
+                                <i class="fas fa-chevron-right text-success me-2 mt-1" style="font-size: 0.7em;"></i>
+                                <span class="small">${topic}</span>
+                            </div>`
                         ).join('')}
                     </div>
+                </div>
+
+                <div class="d-flex gap-3 small text-muted">
+                    <span><i class="fas fa-calendar me-1"></i>${this.formatPostDate(summary.created_utc)}</span>
+                    <span><i class="fas fa-arrow-up me-1"></i>${summary.score || 0} upvotes</span>
+                    <span><i class="fas fa-comments me-1"></i>${summary.num_comments || 0} comments</span>
+                    <span><i class="fas fa-star me-1"></i>${summary.engagement_score}/10</span>
                 </div>
             `;
 

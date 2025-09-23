@@ -131,7 +131,7 @@ Focus on:
         summaries_text = "\n\n".join(
             [
                 f"POST: {summary.title}\n"
-                f"Topics: {', '.join(summary.topics[:3])}\n"
+                f"Topics: {', '.join(summary.topics)}\n"
                 f"Summary: {summary.summary}\n"
                 f"Key Points: {', '.join(summary.key_points)}\n"
                 f"Sentiment: {summary.sentiment}"
