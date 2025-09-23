@@ -2,7 +2,38 @@
 
 class SnoozeApp {
     constructor() {
+        this.socket = null;
+        this.useAsync = true; // Toggle between async and sync analysis
+        this.realTimePostsReceived = 0;
+        this.totalPostsExpected = 0;
+        this.initializeSocketIO();
         this.initializeEventListeners();
+    }
+
+    initializeSocketIO() {
+        this.socket = io();
+
+        this.socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        this.socket.on('progress', (data) => {
+            this.updateProgress(data);
+        });
+
+        this.socket.on('post_summary_ready', (data) => {
+            this.addRealTimePost(data);
+        });
+
+        this.socket.on('analysis_complete', (data) => {
+            this.hideLoading();
+            this.displayResults(data);
+        });
+
+        this.socket.on('error', (data) => {
+            this.hideLoading();
+            this.showError(data.message);
+        });
     }
 
     initializeEventListeners() {
@@ -21,34 +52,164 @@ class SnoozeApp {
         const subreddits = subredditsInput.split(',').map(s => s.trim()).filter(s => s);
         const limit = parseInt(limitInput) || 20;
 
+        this.realTimePostsReceived = 0;
+        this.totalPostsExpected = 0;
+
         this.showLoading();
         this.hideResults();
         this.hideError();
+        this.clearRealTimeResults();
+
+        // Disable the analyze button
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        analyzeBtn.disabled = true;
+        analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
 
         try {
-            const response = await fetch('/api/analyze', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    subreddits: subreddits,
-                    limit: limit
-                })
-            });
+            if (this.useAsync) {
+                // Use the new async endpoint with real-time updates
+                const response = await fetch('/api/analyze-async', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        subreddits: subreddits,
+                        limit: limit
+                    })
+                });
 
-            const data = await response.json();
-
-            if (data.success && data.discussion) {
-                this.displayResults(data);
+                const data = await response.json();
+                if (!data.success) {
+                    this.showError(data.error || 'Failed to start analysis');
+                    this.resetAnalyzeButton();
+                }
+                // Real-time updates will be handled via WebSocket
             } else {
-                this.showError(data.error || 'Analysis failed');
+                // Fallback to synchronous analysis
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        subreddits: subreddits,
+                        limit: limit
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.discussion) {
+                    this.displayResults(data);
+                } else {
+                    this.showError(data.error || 'Analysis failed');
+                }
+                this.hideLoading();
+                this.resetAnalyzeButton();
             }
         } catch (error) {
             this.showError(`Network error: ${error.message}`);
-        } finally {
             this.hideLoading();
+            this.resetAnalyzeButton();
         }
+    }
+
+    resetAnalyzeButton() {
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = '<i class="fas fa-play me-2"></i>Analyze';
+    }
+
+    updateProgress(data) {
+        const progressMessage = document.getElementById('progressMessage');
+        progressMessage.textContent = data.message;
+
+        if (data.stage === 'posts_ready') {
+            this.totalPostsExpected = data.post_count;
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.display = 'block';
+        }
+    }
+
+    addRealTimePost(data) {
+        this.realTimePostsReceived++;
+
+        // Update progress bar
+        if (this.totalPostsExpected > 0) {
+            const percentage = (this.realTimePostsReceived / this.totalPostsExpected) * 100;
+            const progressBar = document.querySelector('.progress-bar');
+            progressBar.style.width = `${percentage}%`;
+            progressBar.textContent = `${this.realTimePostsReceived}/${this.totalPostsExpected}`;
+        }
+
+        // Show real-time results section
+        const realTimeResults = document.getElementById('realTimeResults');
+        realTimeResults.style.display = 'block';
+
+        // Add the post to real-time list
+        const postList = document.getElementById('realTimePostList');
+        const postElement = this.createRealTimePostElement(data.summary);
+        postList.appendChild(postElement);
+
+        // Scroll to the new post
+        postElement.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    createRealTimePostElement(summary) {
+        const div = document.createElement('div');
+        div.className = 'real-time-post mb-3 p-3 border rounded shadow-sm';
+        div.innerHTML = `
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-0">
+                    <a href="${summary.url}" target="_blank" class="text-decoration-none text-primary">
+                        <i class="fas fa-external-link-alt me-1"></i>${summary.title}
+                    </a>
+                </h6>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="badge bg-secondary">r/${summary.subreddit}</span>
+                    <span class="sentiment-badge sentiment-${summary.sentiment} badge">
+                        ${this.getSentimentIcon(summary.sentiment)} ${summary.sentiment}
+                    </span>
+                </div>
+            </div>
+
+            <p class="text-muted mb-2">${summary.summary}</p>
+
+            <div class="mb-2">
+                <strong class="text-dark">Key Points:</strong>
+                <div class="mt-1">
+                    ${summary.key_points.map(point =>
+                        `<div class="key-point d-flex align-items-start mb-1">
+                            <i class="fas fa-chevron-right text-primary me-2 mt-1" style="font-size: 0.7em;"></i>
+                            <span class="small">${point}</span>
+                        </div>`
+                    ).join('')}
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex gap-3 small text-muted">
+                    <span><i class="fas fa-calendar me-1"></i>${this.formatPostDate(summary.created_utc)}</span>
+                    <span><i class="fas fa-arrow-up me-1"></i>${summary.score || 0} upvotes</span>
+                    <span><i class="fas fa-comments me-1"></i>${summary.num_comments || 0} comments</span>
+                    <span><i class="fas fa-star me-1"></i>${summary.engagement_score}/10</span>
+                </div>
+                <div>
+                    <strong class="text-dark me-2">Topics:</strong>
+                    ${summary.topics.map(topic =>
+                        `<span class="theme-tag badge bg-light text-dark me-1">${topic}</span>`
+                    ).join('')}
+                </div>
+            </div>
+        `;
+        return div;
+    }
+
+    clearRealTimeResults() {
+        document.getElementById('realTimePostList').innerHTML = '';
+        document.getElementById('realTimeResults').style.display = 'none';
+        document.getElementById('progressBar').style.display = 'none';
     }
 
     showLoading() {
@@ -82,7 +243,8 @@ class SnoozeApp {
         // Update overview
         document.getElementById('discussionTopic').textContent = discussion.topic;
         document.getElementById('sentimentOverview').textContent = discussion.sentiment_overview;
-        document.getElementById('postCount').textContent = data.post_count;
+        document.getElementById('postCount').textContent = data.post_count || 0;
+        document.getElementById('keptPostsCount').textContent = discussion.total_posts_analyzed || 0;
         document.getElementById('engagementScore').textContent = discussion.total_engagement;
 
         // Display key insights
@@ -95,6 +257,7 @@ class SnoozeApp {
         this.displayPostSummaries(discussion.post_summaries);
 
         this.showResults();
+        this.resetAnalyzeButton();
     }
 
     displayKeyInsights(insights) {
@@ -127,38 +290,50 @@ class SnoozeApp {
 
         summaries.forEach(summary => {
             const div = document.createElement('div');
-            div.className = 'post-summary';
+            div.className = 'post-summary mb-3 p-3 border rounded shadow-sm';
 
             div.innerHTML = `
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <h6 class="mb-0">
-                        <a href="${summary.url}" target="_blank" class="text-decoration-none">
-                            ${summary.title}
+                        <a href="${summary.url}" target="_blank" class="text-decoration-none text-primary">
+                            <i class="fas fa-external-link-alt me-1"></i>${summary.title}
                         </a>
                     </h6>
-                    <div class="d-flex gap-2">
-                        <span class="subreddit-badge">r/${summary.subreddit}</span>
-                        <span class="sentiment-badge sentiment-${summary.sentiment}">
-                            ${summary.sentiment}
+                    <div class="d-flex gap-2 align-items-center">
+                        <span class="badge bg-secondary">r/${summary.subreddit}</span>
+                        <span class="sentiment-badge sentiment-${summary.sentiment} badge">
+                            ${this.getSentimentIcon(summary.sentiment)} ${summary.sentiment}
                         </span>
-                        <span class="engagement-score">${summary.engagement_score}/10</span>
                     </div>
                 </div>
 
                 <p class="text-muted mb-2">${summary.summary}</p>
 
                 <div class="mb-2">
-                    <strong>Key Points:</strong>
-                    ${summary.key_points.map(point =>
-                        `<div class="key-point">${point}</div>`
-                    ).join('')}
+                    <strong class="text-dark">Key Points:</strong>
+                    <div class="mt-1">
+                        ${summary.key_points.map(point =>
+                            `<div class="key-point d-flex align-items-start mb-1">
+                                <i class="fas fa-chevron-right text-primary me-2 mt-1" style="font-size: 0.7em;"></i>
+                                <span class="small">${point}</span>
+                            </div>`
+                        ).join('')}
+                    </div>
                 </div>
 
-                <div class="mb-0">
-                    <strong>Topics:</strong>
-                    ${summary.topics.map(topic =>
-                        `<span class="theme-tag">${topic}</span>`
-                    ).join('')}
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex gap-3 small text-muted">
+                        <span><i class="fas fa-calendar me-1"></i>${this.formatPostDate(summary.created_utc)}</span>
+                        <span><i class="fas fa-arrow-up me-1"></i>${summary.score || 0} upvotes</span>
+                        <span><i class="fas fa-comments me-1"></i>${summary.num_comments || 0} comments</span>
+                        <span><i class="fas fa-star me-1"></i>${summary.engagement_score}/10</span>
+                    </div>
+                    <div>
+                        <strong class="text-dark me-2">Topics:</strong>
+                        ${summary.topics.map(topic =>
+                            `<span class="theme-tag badge bg-light text-dark me-1">${topic}</span>`
+                        ).join('')}
+                    </div>
                 </div>
             `;
 
@@ -169,19 +344,39 @@ class SnoozeApp {
     getSentimentIcon(sentiment) {
         switch (sentiment.toLowerCase()) {
             case 'positive':
-                return 'fas fa-smile text-success';
+                return '<i class="fas fa-smile"></i>';
             case 'negative':
-                return 'fas fa-frown text-danger';
+                return '<i class="fas fa-frown"></i>';
             case 'mixed':
-                return 'fas fa-meh text-warning';
+                return '<i class="fas fa-meh"></i>';
             default:
-                return 'fas fa-meh text-muted';
+                return '<i class="fas fa-meh"></i>';
         }
     }
 
     formatTimestamp(timestamp) {
         const date = new Date(timestamp);
         return date.toLocaleString();
+    }
+
+    formatPostDate(created_utc) {
+        if (!created_utc) return 'Unknown date';
+
+        const date = new Date(created_utc);
+        const now = new Date();
+        const diffTime = Math.abs(now - date);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 1) {
+            return 'Yesterday';
+        } else if (diffDays <= 7) {
+            return `${diffDays} days ago`;
+        } else if (diffDays <= 30) {
+            const weeks = Math.floor(diffDays / 7);
+            return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+        } else {
+            return date.toLocaleDateString();
+        }
     }
 }
 

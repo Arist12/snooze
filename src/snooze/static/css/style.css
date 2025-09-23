@@ -119,6 +119,92 @@ body {
     color: #6c757d;
 }
 
+/* Real-time post styles */
+.real-time-post {
+    background-color: #fff;
+    border: 1px solid #e9ecef;
+    border-left: 4px solid #28a745;
+    transition: all 0.3s ease;
+}
+
+.real-time-post:hover {
+    box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+/* Enhanced sentiment badges */
+.sentiment-positive {
+    background-color: #d4edda !important;
+    color: #155724 !important;
+    border: 1px solid #c3e6cb;
+}
+
+.sentiment-negative {
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+    border: 1px solid #f5c6cb;
+}
+
+.sentiment-mixed {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+    border: 1px solid #ffeaa7;
+}
+
+.sentiment-neutral {
+    background-color: #e2e3e5 !important;
+    color: #383d41 !important;
+    border: 1px solid #d1d3d4;
+}
+
+/* Progress bar animation */
+.progress-bar {
+    transition: width 0.6s ease;
+}
+
+/* Card hover effects */
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+/* External link styling */
+.external-link {
+    text-decoration: none;
+    color: #0d6efd;
+    transition: color 0.2s ease;
+}
+
+.external-link:hover {
+    color: #0a58ca;
+    text-decoration: underline;
+}
+
+/* Enhanced post summary styling */
+.post-summary,
+.real-time-post {
+    transition: all 0.3s ease;
+    border: 1px solid #e9ecef;
+}
+
+.post-summary:hover,
+.real-time-post:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 0.5rem 1rem rgba(13, 110, 253, 0.15);
+}
+
+/* Stats styling */
+.stats-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.stats-text i {
+    width: 14px;
+    text-align: center;
+}
+
 /* Responsive improvements */
 @media (max-width: 768px) {
     .container {
@@ -126,11 +212,17 @@ body {
         padding-right: 1rem;
     }
 
-    .post-summary {
+    .post-summary,
+    .real-time-post {
         padding: 0.75rem;
     }
 
     .navbar-brand {
         font-size: 1.1rem;
+    }
+
+    .d-flex.gap-3 {
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
     }
 }

@@ -1,8 +1,11 @@
+import asyncio
 import os
 from datetime import datetime
 from typing import Optional
+import json
 
 from flask import Flask, jsonify, render_template, request
+from flask_socketio import SocketIO, emit
 
 from .crawler import RedditCrawler
 from .storage import DataStorage
@@ -21,10 +24,12 @@ class SnoozeVisualizer:
             template_folder=template_folder or self._get_templates_path(),
             static_folder=static_folder or self._get_static_path(),
         )
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         self.crawler = None
         self.summarizer = None
         self.storage = DataStorage()
         self._setup_routes()
+        self._setup_socketio_events()
 
     def _get_templates_path(self) -> str:
         """Get the path to the templates directory."""
@@ -33,6 +38,18 @@ class SnoozeVisualizer:
     def _get_static_path(self) -> str:
         """Get the path to the static files directory."""
         return os.path.join(os.path.dirname(__file__), "static")
+
+    def _setup_socketio_events(self):
+        """Setup SocketIO event handlers."""
+
+        @self.socketio.on('connect')
+        def handle_connect():
+            print(f"Client connected")
+            emit('connected', {'status': 'Connected to Snooze server'})
+
+        @self.socketio.on('disconnect')
+        def handle_disconnect():
+            print('Client disconnected')
 
     def _setup_routes(self):
         """Setup Flask routes."""
@@ -44,7 +61,7 @@ class SnoozeVisualizer:
 
         @self.app.route("/api/analyze", methods=["POST"])
         def analyze():
-            """API endpoint to analyze Reddit discussions."""
+            """API endpoint to analyze Reddit discussions (legacy, synchronous)."""
             try:
                 data = request.get_json()
                 limit = data.get("limit", 20)
@@ -146,6 +163,27 @@ class SnoozeVisualizer:
             except Exception as e:
                 return jsonify({"success": False, "error": str(e)}), 500
 
+        @self.app.route("/api/analyze-async", methods=["POST"])
+        def analyze_async():
+            """API endpoint to start async analysis with real-time updates."""
+            try:
+                data = request.get_json()
+                limit = data.get("limit", 20)
+                subreddits = data.get(
+                    "subreddits",
+                    ["ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding"],
+                )
+
+                # Start async analysis in background
+                self.socketio.start_background_task(
+                    self._run_async_analysis, subreddits, limit
+                )
+
+                return jsonify({"success": True, "message": "Analysis started"})
+
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)}), 500
+
         @self.app.route("/api/posts")
         def get_posts():
             """Get latest analyzed posts."""
@@ -194,6 +232,120 @@ class SnoozeVisualizer:
                 }
             )
 
+    def _run_async_analysis(self, subreddits, limit):
+        """Run async analysis with real-time updates via WebSocket."""
+        try:
+            # Run the async analysis in an event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._async_analysis_process(subreddits, limit))
+            finally:
+                loop.close()
+        except Exception as e:
+            self.socketio.emit('error', {'message': str(e)})
+
+    async def _async_analysis_process(self, subreddits, limit):
+        """The actual async analysis process."""
+        try:
+            # Initialize components if not already done
+            if not self.crawler:
+                self.crawler = RedditCrawler.from_env()
+            if not self.summarizer:
+                self.summarizer = LLMSummarizer.from_env()
+
+            self.socketio.emit('progress', {'stage': 'crawling', 'message': 'Crawling Reddit posts...'})
+
+            # Generate cache keys
+            posts_cache_key = self.storage.generate_posts_cache_key(subreddits, limit)
+
+            # Try to load cached posts first
+            posts = self.storage.load_posts(posts_cache_key, max_age_hours=6)
+            if not posts:
+                if self.crawler.use_async:
+                    posts = await self.crawler.get_all_coding_discussions_async(limit=limit)
+                else:
+                    posts = self.crawler.get_all_coding_discussions(limit=limit)
+                if posts:
+                    self.storage.save_posts(posts, posts_cache_key)
+
+            if not posts:
+                self.socketio.emit('error', {'message': 'No posts found to analyze'})
+                return
+
+            self.socketio.emit('progress', {
+                'stage': 'posts_ready',
+                'message': f'Found {len(posts)} posts. Starting relevance analysis and summarization...',
+                'post_count': len(posts)
+            })
+
+            # Generate cache key for summaries
+            summaries_cache_key = self.storage.generate_summaries_cache_key(posts)
+            cached_summaries = self.storage.load_summaries(summaries_cache_key, max_age_hours=24)
+
+            if cached_summaries:
+                self.socketio.emit('progress', {'stage': 'summaries_cached', 'message': 'Using cached summaries'})
+                summaries = cached_summaries
+            else:
+                summaries = []
+
+                # Real-time callback for each completed summary
+                async def summary_callback(summary):
+                    summaries.append(summary)
+                    self.socketio.emit('post_summary_ready', {
+                        'summary': self._serialize_post_summary(summary),
+                        'progress': len(summaries),
+                        'total': len(posts),
+                        'message': f'Completed {len(summaries)} relevant posts'
+                    })
+
+                # Run async summarization
+                await self.summarizer.summarize_posts_async(posts, callback=summary_callback)
+
+                # Emit filtering summary
+                filtered_count = len(posts) - len(summaries)
+                self.socketio.emit('progress', {
+                    'stage': 'filtering_complete',
+                    'message': f'Analysis complete: {len(summaries)} relevant posts, {filtered_count} filtered out',
+                    'relevant_count': len(summaries),
+                    'filtered_count': filtered_count
+                })
+
+                if summaries:
+                    self.storage.save_summaries(summaries, summaries_cache_key)
+
+            if not summaries:
+                self.socketio.emit('error', {'message': 'Failed to generate summaries'})
+                return
+
+            self.socketio.emit('progress', {'stage': 'creating_discussion', 'message': 'Creating discussion summary...'})
+
+            # Generate cache key for discussion
+            discussion_cache_key = self.storage.generate_discussion_cache_key(summaries)
+            discussion = self.storage.load_discussion(discussion_cache_key, max_age_hours=24)
+
+            if not discussion:
+                if self.summarizer.use_async:
+                    discussion = await self.summarizer._create_discussion_summary_async(summaries)
+                else:
+                    discussion = self.summarizer.create_discussion_summary(summaries)
+                if discussion:
+                    self.storage.save_discussion(discussion, discussion_cache_key)
+
+            if discussion:
+                self.socketio.emit('analysis_complete', {
+                    'success': True,
+                    'discussion': self._serialize_discussion(discussion),
+                    'post_count': len(posts),
+                    'summary_count': len(summaries)
+                })
+            else:
+                self.socketio.emit('error', {'message': 'Failed to create discussion summary'})
+
+        except Exception as e:
+            print(f"Error in async analysis: {e}")
+            self.socketio.emit('error', {'message': f'Analysis failed: {str(e)}'})
+
     def _serialize_discussion(self, discussion: DiscussionSummary) -> dict:
         """Convert DiscussionSummary to JSON-serializable dict."""
         return {
@@ -202,6 +354,7 @@ class SnoozeVisualizer:
             "common_themes": discussion.common_themes,
             "sentiment_overview": discussion.sentiment_overview,
             "total_engagement": discussion.total_engagement,
+            "total_posts_analyzed": discussion.total_posts_analyzed,
             "post_summaries": [
                 self._serialize_post_summary(ps) for ps in discussion.post_summaries
             ],
@@ -220,10 +373,15 @@ class SnoozeVisualizer:
             "engagement_score": post_summary.engagement_score,
             "url": post_summary.url,
             "subreddit": post_summary.subreddit,
+            "score": post_summary.score,
+            "num_comments": post_summary.num_comments,
+            "is_relevant": post_summary.is_relevant,
+            "relevance_reason": post_summary.relevance_reason,
+            "created_utc": post_summary.created_utc.isoformat() if post_summary.created_utc else None,
         }
 
     def run(self, host: str = "127.0.0.1", port: int = 8080, debug: bool = True):
-        """Run the Flask development server."""
+        """Run the Flask-SocketIO development server."""
         import socket
 
         # Check if port is available
@@ -252,7 +410,7 @@ class SnoozeVisualizer:
 
         print(f"Starting Snooze visualizer at http://{host}:{port}")
         try:
-            self.app.run(host=host, port=port, debug=debug)
+            self.socketio.run(self.app, host=host, port=port, debug=debug)
         except OSError as e:
             if "Address already in use" in str(e):
                 print(
