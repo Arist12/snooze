@@ -198,7 +198,14 @@ class RedditCrawler:
     ) -> Iterator[RedditPost]:
         """Get coding-related posts from specified subreddits."""
         if subreddit_names is None:
-            subreddit_names = ["ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding"]
+            subreddit_names = [
+                "vibecoding",
+                "ClaudeCode",
+                "codex",
+                "GithubCopilot",
+                "ChatGPTCoding",
+                "cursor",
+            ]
 
         if coding_keywords is None:
             coding_keywords = [
@@ -234,6 +241,7 @@ class RedditCrawler:
 
                     # For coding subreddits, be more inclusive but still filter out completely unrelated posts
                     is_coding_related = subreddit_name.lower() in [
+                        "vibecoding",
                         "claudecode",
                         "codex",
                         "githubcopilot",
@@ -263,7 +271,14 @@ class RedditCrawler:
             )
 
         if subreddit_names is None:
-            subreddit_names = ["ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding"]
+            subreddit_names = [
+                "vibecoding",
+                "ClaudeCode",
+                "codex",
+                "GithubCopilot",
+                "ChatGPTCoding",
+                "cursor",
+            ]
 
         if coding_keywords is None:
             coding_keywords = [
@@ -311,6 +326,7 @@ class RedditCrawler:
                         "codex",
                         "githubcopilot",
                         "chatgptcoding",
+                        "cursor",
                     ] or any(
                         keyword.lower() in text_to_check for keyword in coding_keywords
                     )
@@ -334,7 +350,14 @@ class RedditCrawler:
         include_comments: bool = True,
     ) -> List[RedditPost]:
         """Get coding discussions from all target subreddits asynchronously."""
-        target_subreddits = ["ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding"]
+        target_subreddits = [
+            "vibecoding",
+            "ClaudeCode",
+            "codex",
+            "GithubCopilot",
+            "ChatGPTCoding",
+            "cursor",
+        ]
 
         posts = await self.get_coding_discussions_async(
             target_subreddits,
@@ -347,6 +370,20 @@ class RedditCrawler:
 
         return posts[:limit]
 
+    async def _run_async_discussions(self, limit: int, include_comments: bool) -> List[RedditPost]:
+        """Helper method to run async discussions with fresh client if needed."""
+        import os
+
+        # Recreate async client if it's been invalidated by a closed event loop
+        if not hasattr(self, 'async_reddit') or self.async_reddit is None:
+            self.async_reddit = asyncpraw.Reddit(
+                client_id=os.getenv("REDDIT_CLIENT_ID"),
+                client_secret=os.getenv("REDDIT_CLIENT_SECRET"),
+                user_agent="Snooze/0.1.0 by Arist12",
+            )
+
+        return await self.get_all_coding_discussions_async(limit, include_comments)
+
     def get_all_coding_discussions(
         self,
         limit: int = 50,
@@ -354,17 +391,25 @@ class RedditCrawler:
     ) -> List[RedditPost]:
         """Get coding discussions from all target subreddits."""
         if self.use_async:
-            # Run async version in sync context for backward compatibility
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # Try to use existing event loop, create new one if needed
             try:
-                return loop.run_until_complete(
-                    self.get_all_coding_discussions_async(limit, include_comments)
-                )
-            finally:
-                loop.close()
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("Event loop is closed")
+                # Run in existing loop if possible
+                return asyncio.run(self.get_all_coding_discussions_async(limit, include_comments))
+            except RuntimeError:
+                # No event loop or closed loop, create new one
+                return asyncio.run(self.get_all_coding_discussions_async(limit, include_comments))
 
-        target_subreddits = ["ClaudeCode", "codex", "GithubCopilot", "ChatGPTCoding"]
+        target_subreddits = [
+            "vibecoding",
+            "ClaudeCode",
+            "codex",
+            "GithubCopilot",
+            "ChatGPTCoding",
+            "cursor",
+        ]
 
         posts = list(
             self.get_coding_discussions(

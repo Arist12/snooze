@@ -97,21 +97,30 @@ class SnoozeVisualizer:
                         {"success": False, "error": "No posts found to analyze"}
                     ), 404
 
-                # Generate cache key for summaries
-                summaries_cache_key = self.storage.generate_summaries_cache_key(posts)
+                # Use post-level caching for efficient summary retrieval
+                cached_summaries = self.storage.load_summaries_with_post_cache(posts, max_age_hours=144)
+                posts_needing_analysis = self.storage.get_posts_needing_analysis(posts, max_age_hours=144)
 
-                # Try to load cached summaries
-                summaries = self.storage.load_summaries(
-                    summaries_cache_key, max_age_hours=24
-                )
-                if not summaries:
-                    print("Generating new summaries with LLM...")
-                    # Summarize posts
-                    summaries = self.summarizer.summarize_posts(posts)
-                    if summaries:
-                        self.storage.save_summaries(summaries, summaries_cache_key)
-                else:
-                    print(f"Using cached summaries ({len(summaries)} summaries)")
+                print(f"Found {len(cached_summaries)} cached summaries, {len(posts_needing_analysis)} posts need analysis")
+
+                # Analyze only posts that don't have cached summaries
+                new_summaries = []
+                if posts_needing_analysis:
+                    print(f"Analyzing {len(posts_needing_analysis)} new posts...")
+                    new_summaries = self.summarizer.summarize_posts(posts_needing_analysis)
+
+                    # Cache each new summary individually
+                    for summary in new_summaries:
+                        if summary:  # Only cache valid summaries
+                            self.storage.save_post_summary(summary)
+
+                # Combine cached and new summaries
+                summaries = cached_summaries + new_summaries
+
+                # Also save the combined summaries for backward compatibility
+                if summaries:
+                    summaries_cache_key = self.storage.generate_summaries_cache_key(posts)
+                    self.storage.save_summaries(summaries, summaries_cache_key)
 
                 if not summaries:
                     return jsonify(
@@ -125,7 +134,7 @@ class SnoozeVisualizer:
 
                 # Try to load cached discussion
                 discussion = self.storage.load_discussion(
-                    discussion_cache_key, max_age_hours=24
+                    discussion_cache_key, max_age_hours=144
                 )
                 if not discussion:
                     print("Creating new discussion summary...")
@@ -144,6 +153,8 @@ class SnoozeVisualizer:
                         else None,
                         "post_count": len(posts),
                         "summary_count": len(summaries),
+                        "cached_summary_count": len(cached_summaries),
+                        "new_summary_count": len(new_summaries),
                         "cached": {
                             "posts": posts_cache_key
                             in [f for f in self.storage.list_cached_files()["posts"]],
@@ -235,13 +246,8 @@ class SnoozeVisualizer:
     def _run_async_analysis(self, subreddits, limit):
         """Run async analysis with real-time updates via WebSocket."""
         try:
-            # Run the async analysis in an event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(self._async_analysis_process(subreddits, limit))
-            finally:
-                loop.close()
+            # Use asyncio.run() for proper event loop management
+            asyncio.run(self._async_analysis_process(subreddits, limit))
         except Exception as e:
             self.socketio.emit('error', {'message': str(e)})
 
@@ -279,40 +285,70 @@ class SnoozeVisualizer:
                 'post_count': len(posts)
             })
 
-            # Generate cache key for summaries
-            summaries_cache_key = self.storage.generate_summaries_cache_key(posts)
-            cached_summaries = self.storage.load_summaries(summaries_cache_key, max_age_hours=24)
+            # Use post-level caching for efficient summary retrieval
+            cached_summaries = self.storage.load_summaries_with_post_cache(posts, max_age_hours=144)
+            posts_needing_analysis = self.storage.get_posts_needing_analysis(posts, max_age_hours=144)
 
-            if cached_summaries:
-                self.socketio.emit('progress', {'stage': 'summaries_cached', 'message': 'Using cached summaries'})
-                summaries = cached_summaries
-            else:
-                summaries = []
+            self.socketio.emit('progress', {
+                'stage': 'cache_check',
+                'message': f'Found {len(cached_summaries)} cached summaries, {len(posts_needing_analysis)} posts need analysis'
+            })
 
-                # Real-time callback for each completed summary
-                async def summary_callback(summary):
-                    summaries.append(summary)
-                    self.socketio.emit('post_summary_ready', {
-                        'summary': self._serialize_post_summary(summary),
-                        'progress': len(summaries),
-                        'total': len(posts),
-                        'message': f'Completed {len(summaries)} relevant posts'
-                    })
-
-                # Run async summarization
-                await self.summarizer.summarize_posts_async(posts, callback=summary_callback)
-
-                # Emit filtering summary
-                filtered_count = len(posts) - len(summaries)
-                self.socketio.emit('progress', {
-                    'stage': 'filtering_complete',
-                    'message': f'Analysis complete: {len(summaries)} relevant posts, {filtered_count} filtered out',
-                    'relevant_count': len(summaries),
-                    'filtered_count': filtered_count
+            # Immediately emit cached summaries for live rendering
+            for cached_summary in cached_summaries:
+                self.socketio.emit('post_summary_ready', {
+                    'summary': self._serialize_post_summary(cached_summary),
+                    'cached': True,
+                    'progress': len(cached_summaries),
+                    'total': len(posts),
+                    'message': f'Loaded cached summary for: {cached_summary.title[:50]}...'
                 })
 
-                if summaries:
-                    self.storage.save_summaries(summaries, summaries_cache_key)
+            # Track all summaries for real-time updates
+            all_summaries = cached_summaries.copy()
+
+            # Analyze only posts that don't have cached summaries
+            if posts_needing_analysis:
+                async def progress_callback(summary):
+                    # Save each summary as it's completed
+                    if summary:
+                        self.storage.save_post_summary(summary)
+                        all_summaries.append(summary)
+
+                        # Emit real-time update for new analysis
+                        self.socketio.emit('post_summary_ready', {
+                            'summary': self._serialize_post_summary(summary),
+                            'cached': False,
+                            'progress': len(all_summaries),
+                            'total': len(posts),
+                            'message': f'Analyzed: {summary.title[:50]}...'
+                        })
+
+                new_summaries = await self.summarizer.summarize_posts_async(
+                    posts_needing_analysis,
+                    callback=progress_callback
+                )
+            else:
+                new_summaries = []
+
+            # Final summary list
+            summaries = all_summaries
+
+            # Emit completion status
+            filtered_count = len(posts) - len(summaries)
+            self.socketio.emit('progress', {
+                'stage': 'analysis_complete',
+                'message': f'Analysis complete: {len(summaries)} relevant posts, {filtered_count} filtered out',
+                'relevant_count': len(summaries),
+                'filtered_count': filtered_count,
+                'cached_count': len(cached_summaries),
+                'new_count': len(new_summaries)
+            })
+
+            # Save combined summaries for backward compatibility
+            if summaries:
+                summaries_cache_key = self.storage.generate_summaries_cache_key(posts)
+                self.storage.save_summaries(summaries, summaries_cache_key)
 
             if not summaries:
                 self.socketio.emit('error', {'message': 'Failed to generate summaries'})
@@ -322,7 +358,7 @@ class SnoozeVisualizer:
 
             # Generate cache key for discussion
             discussion_cache_key = self.storage.generate_discussion_cache_key(summaries)
-            discussion = self.storage.load_discussion(discussion_cache_key, max_age_hours=24)
+            discussion = self.storage.load_discussion(discussion_cache_key, max_age_hours=144)
 
             if not discussion:
                 if self.summarizer.use_async:

@@ -23,8 +23,9 @@ class DataStorage:
         self.posts_dir = self.data_dir / "posts"
         self.summaries_dir = self.data_dir / "summaries"
         self.discussions_dir = self.data_dir / "discussions"
+        self.post_summaries_dir = self.data_dir / "post_summaries"  # Individual post summaries
 
-        for directory in [self.posts_dir, self.summaries_dir, self.discussions_dir]:
+        for directory in [self.posts_dir, self.summaries_dir, self.discussions_dir, self.post_summaries_dir]:
             directory.mkdir(exist_ok=True)
 
     def _generate_cache_key(self, data: str) -> str:
@@ -262,6 +263,7 @@ class DataStorage:
             "posts": [f.stem for f in self.posts_dir.glob("*.json")],
             "summaries": [f.stem for f in self.summaries_dir.glob("*.json")],
             "discussions": [f.stem for f in self.discussions_dir.glob("*.json")],
+            "post_summaries": [f.stem for f in self.post_summaries_dir.glob("*.json")],
         }
 
     def clear_cache(
@@ -272,13 +274,15 @@ class DataStorage:
 
         directories = []
         if category is None:
-            directories = [self.posts_dir, self.summaries_dir, self.discussions_dir]
+            directories = [self.posts_dir, self.summaries_dir, self.discussions_dir, self.post_summaries_dir]
         elif category == "posts":
             directories = [self.posts_dir]
         elif category == "summaries":
             directories = [self.summaries_dir]
         elif category == "discussions":
             directories = [self.discussions_dir]
+        elif category == "post_summaries":
+            directories = [self.post_summaries_dir]
 
         for directory in directories:
             for filepath in directory.glob("*.json"):
@@ -297,6 +301,88 @@ class DataStorage:
 
         return deleted_count
 
+    def save_post_summary(self, post_summary: PostSummary) -> None:
+        """Save individual post summary to enable post-level caching."""
+        filepath = self.post_summaries_dir / f"{post_summary.original_post_id}.json"
+
+        summary_data = {
+            "timestamp": datetime.now().isoformat(),
+            "original_post_id": post_summary.original_post_id,
+            "title": post_summary.title,
+            "key_points": post_summary.key_points,
+            "sentiment": post_summary.sentiment,
+            "topics": post_summary.topics,
+            "summary": post_summary.summary,
+            "engagement_score": post_summary.engagement_score,
+            "url": post_summary.url,
+            "subreddit": post_summary.subreddit,
+            "score": post_summary.score,
+            "num_comments": post_summary.num_comments,
+            "is_relevant": post_summary.is_relevant,
+            "relevance_reason": post_summary.relevance_reason,
+            "created_utc": post_summary.created_utc.isoformat() if post_summary.created_utc else None,
+        }
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False)
+
+    def load_post_summary(self, post_id: str, max_age_hours: int = 144) -> Optional[PostSummary]:
+        """Load individual post summary if cache is valid."""
+        filepath = self.post_summaries_dir / f"{post_id}.json"
+
+        if not self._is_cache_valid(filepath, max_age_hours):
+            return None
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            created_utc = None
+            if data.get("created_utc"):
+                created_utc = datetime.fromisoformat(data["created_utc"])
+
+            return PostSummary(
+                original_post_id=data["original_post_id"],
+                title=data["title"],
+                key_points=data["key_points"],
+                sentiment=data["sentiment"],
+                topics=data["topics"],
+                summary=data["summary"],
+                engagement_score=data["engagement_score"],
+                url=data["url"],
+                subreddit=data["subreddit"],
+                score=data.get("score", 0),
+                num_comments=data.get("num_comments", 0),
+                is_relevant=data.get("is_relevant", True),
+                relevance_reason=data.get("relevance_reason", ""),
+                created_utc=created_utc,
+            )
+
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            print(f"Error loading cached post summary for {post_id}: {e}")
+            return None
+
+    def load_summaries_with_post_cache(self, posts: List[RedditPost], max_age_hours: int = 144) -> List[PostSummary]:
+        """Load summaries using post-level caching. Returns cached summaries and list of posts that need analysis."""
+        cached_summaries = []
+
+        for post in posts:
+            cached_summary = self.load_post_summary(post.id, max_age_hours)
+            if cached_summary:
+                cached_summaries.append(cached_summary)
+
+        return cached_summaries
+
+    def get_posts_needing_analysis(self, posts: List[RedditPost], max_age_hours: int = 144) -> List[RedditPost]:
+        """Get list of posts that don't have valid cached summaries."""
+        posts_needing_analysis = []
+
+        for post in posts:
+            if not self.load_post_summary(post.id, max_age_hours):
+                posts_needing_analysis.append(post)
+
+        return posts_needing_analysis
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get statistics about cached data."""
         stats = {}
@@ -305,6 +391,7 @@ class DataStorage:
             ("posts", self.posts_dir),
             ("summaries", self.summaries_dir),
             ("discussions", self.discussions_dir),
+            ("post_summaries", self.post_summaries_dir),
         ]:
             files = list(directory.glob("*.json"))
             total_size = sum(f.stat().st_size for f in files)

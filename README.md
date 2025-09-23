@@ -4,11 +4,36 @@ Snooze is a Python application that analyzes and visualizes Reddit discussions a
 
 It focuses on specific coding-related subreddits (r/ClaudeCode, r/codex, r/GithubCopilot, r/ChatGPTCoding), uses LLM to summarize discussions, and includes intelligent caching to avoid repeated API calls.
 
-## Components
+## How Posts Are Selected
 
-1. **Reddit Crawler** (`snooze.crawler`): Crawls Reddit posts using `praw`
-2. **LLM Summarizer** (`snooze.summarizer`): Analyzes posts using GPT-5
-3. **Web Visualizer** (`snooze.visualizer`): Flask-based web interface
+Snooze uses a multi-stage filtering process to identify relevant AI coding discussions:
+
+1. **Target Subreddits**: Focuses on AI coding tool communities (r/vibecoding, r/ClaudeCode, r/codex, r/GithubCopilot, r/ChatGPTCoding, r/cursor)
+
+2. **Keyword Filtering**: Posts must contain coding-related keywords like "copilot", "claude", "chatgpt", "cursor", "coding", "ai assistant", "pair programming", etc.
+
+3. **Engagement Priority**: Fetches "hot" posts (most popular recent posts) and sorts by score and recency
+
+4. **LLM Relevance Check**: Each post is analyzed by LLM to filter out spam, empty posts, or off-topic content
+
+
+### Live Progressive Rendering
+
+The web interface provides real-time feedback during analysis:
+
+- **Instant display**: Cached summaries appear immediately (0.1 seconds)
+- **Live streaming**: New analyses stream in real-time as completed
+- **Progressive results**: Users see content as soon as it's available
+- **No waiting**: No need to wait for full batch completion
+
+**Example**: When analyzing 20 posts where 18 are unchanged:
+- ❌ **Old system**: 20 LLM calls, ~2-3 minutes, batch results
+- ✅ **New system**: 2 LLM calls, ~15 seconds, live streaming
+
+**User Experience**: Instead of staring at a loading screen for minutes, users see 90% of results instantly, then watch new ones appear every 15-30 seconds.
+
+Cache files are stored in `data/` directory with MD5-hashed keys based on input parameters. Individual post summaries are stored as `data/post_summaries/[post_id].json`.
+
 
 ## Installation
 

@@ -248,16 +248,8 @@ Focus on:
     def summarize_post(self, post: RedditPost) -> Optional[PostSummary]:
         """Summarize a single Reddit post using LLM."""
         if self.use_async:
-            # For backwards compatibility, run async method in sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                semaphore = asyncio.Semaphore(5)  # Limit concurrent requests
-                return loop.run_until_complete(
-                    self._summarize_post_async(post, semaphore)
-                )
-            finally:
-                loop.close()
+            # Use asyncio.run() for proper event loop management
+            return asyncio.run(self._run_single_post_async(post))
 
         try:
             prompt = self._create_post_summary_prompt(post)
@@ -372,13 +364,8 @@ Focus on:
     def summarize_posts(self, posts: List[RedditPost]) -> List[PostSummary]:
         """Summarize multiple Reddit posts."""
         if self.use_async:
-            # Run async version in sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(self.summarize_posts_async(posts))
-            finally:
-                loop.close()
+            # Use asyncio.run() for proper event loop management
+            return asyncio.run(self._run_posts_async(posts))
 
         summaries = []
         relevant_count = 0
@@ -461,15 +448,8 @@ Focus on:
             return None
 
         if self.use_async:
-            # Run async version in sync context for backward compatibility
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    self._create_discussion_summary_async(post_summaries)
-                )
-            finally:
-                loop.close()
+            # Use asyncio.run() for proper event loop management
+            return asyncio.run(self._run_discussion_async(post_summaries))
 
         try:
             prompt = self._create_discussion_summary_prompt(post_summaries)
@@ -519,6 +499,34 @@ Focus on:
         except Exception as e:
             print(f"Error creating discussion summary: {e}")
             return None
+
+    async def _run_single_post_async(self, post: RedditPost) -> Optional[PostSummary]:
+        """Helper method to run single post analysis with fresh client if needed."""
+        self._ensure_async_client()
+        semaphore = asyncio.Semaphore(5)
+        return await self._summarize_post_async(post, semaphore)
+
+    async def _run_posts_async(self, posts: List[RedditPost]) -> List[PostSummary]:
+        """Helper method to run multiple posts analysis with fresh client if needed."""
+        self._ensure_async_client()
+        return await self.summarize_posts_async(posts)
+
+    async def _run_discussion_async(self, post_summaries: List[PostSummary]) -> Optional[DiscussionSummary]:
+        """Helper method to run discussion summary with fresh client if needed."""
+        self._ensure_async_client()
+        return await self._create_discussion_summary_async(post_summaries)
+
+    def _ensure_async_client(self):
+        """Ensure async client is available and valid."""
+        if not hasattr(self, 'async_client') or self.async_client is None:
+            import os
+            from openai import AsyncAzureOpenAI
+
+            self.async_client = AsyncAzureOpenAI(
+                api_key=os.getenv("AZURE_API_KEY"),
+                azure_endpoint=os.getenv("AZURE_ENDPOINT"),
+                api_version="2024-12-01-preview",
+            )
 
     def analyze_trends(self, discussion_summaries: List[DiscussionSummary]) -> dict:
         """Analyze trends across multiple discussion summaries."""
